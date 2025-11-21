@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState, useRef } from 'https://esm.sh/react';
 import ReactDOM from 'https://esm.sh/react-dom/client';
-import { Search, Star, StarOff, RefreshCw, Video, Tv, Clapperboard, Menu, ChevronsLeft, ChevronDown, ChevronUp, Cog } from 'https://esm.sh/lucide-react';
+import { Search, Star, StarOff, RefreshCw, Video, Tv, Clapperboard, Menu, ChevronsLeft, ChevronDown, ChevronUp, Cog, Download } from 'https://esm.sh/lucide-react';
 
 // Fix: Declare Hls as a global variable to resolve TypeScript errors.
 // This is necessary because hls.js is expected to be loaded via a script tag.
@@ -21,10 +21,12 @@ const Player = ({url, title, onPlayerError, logDebug}) => {
   const videoRef = useRef(null);
   const hlsInstanceRef = useRef(null);
   const [playerMode, setPlayerMode] = useState('native'); // 'native' or 'iframe'
+  const [errorMsg, setErrorMsg] = useState(null);
 
   // Effect to reset player mode when the video source URL changes.
   useEffect(() => {
     setPlayerMode('native');
+    setErrorMsg(null);
   }, [url]);
 
   const handleError = () => {
@@ -34,8 +36,13 @@ const Player = ({url, title, onPlayerError, logDebug}) => {
         if (onPlayerError) {
             onPlayerError();
         }
+    } else {
+        setErrorMsg("Erro na reprodução. Tente o download.");
     }
   };
+
+  // Check for Mixed Content (HTTP video on HTTPS site)
+  const isMixedContent = typeof window !== 'undefined' && window.location.protocol === 'https:' && url.startsWith('http:');
 
   // Effect to setup the native video player.
   useEffect(() => {
@@ -89,27 +96,53 @@ const Player = ({url, title, onPlayerError, logDebug}) => {
   }, [url, playerMode]);
 
   return (
-     <div className="w-full h-full flex flex-col bg-black">
-        <div className="flex justify-between items-center mb-2 flex-shrink-0">
+     <div className="w-full h-full flex flex-col bg-black relative">
+        <div className="flex justify-between items-center mb-2 flex-shrink-0 px-2 pt-2">
             <h2 className="text-white text-xl truncate" title={title}>{title}</h2>
-            <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline text-sm flex-shrink-0 ml-4">Abrir em nova aba</a>
+            <div className="flex gap-4 items-center">
+                <a
+                    href={url}
+                    download
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-green-700 hover:bg-green-600 text-white px-3 py-1 rounded text-sm flex items-center gap-2 transition-colors"
+                    title="Baixar vídeo ou assistir em player externo"
+                >
+                    <Download size={16} /> Download
+                </a>
+                <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline text-sm flex-shrink-0">Abrir em nova aba</a>
+            </div>
         </div>
         
-        {playerMode === 'native' && (
-            <video ref={videoRef} controls autoPlay onError={handleError} className="w-full h-full bg-black" referrerPolicy="no-referrer" />
+        {isMixedContent && (
+            <div className="mx-2 mb-2 bg-yellow-900/80 text-yellow-100 p-2 text-xs rounded border border-yellow-700">
+                ⚠️ <strong>Aviso de Segurança:</strong> Este vídeo usa uma conexão não segura (HTTP). Se a tela ficar preta, o navegador bloqueou o conteúdo. Use o botão <strong>Download</strong> ou <strong>Abrir em nova aba</strong> para assistir.
+            </div>
         )}
 
-        {playerMode === 'iframe' && (
-            <iframe
-                src={url}
-                className="w-full h-full border-0"
-                allow="autoplay; encrypted-media; fullscreen"
-                allowFullScreen
-                referrerPolicy="no-referrer"
-                title={`WebView para ${title}`}
-                sandbox="allow-forms allow-scripts allow-same-origin allow-presentation"
-            ></iframe>
-        )}
+        <div className="flex-1 relative overflow-hidden bg-black">
+             {playerMode === 'native' && (
+                <video ref={videoRef} controls autoPlay onError={handleError} className="w-full h-full bg-black" referrerPolicy="no-referrer" />
+            )}
+
+            {playerMode === 'iframe' && (
+                <iframe
+                    src={url}
+                    className="w-full h-full border-0"
+                    allow="autoplay; encrypted-media; fullscreen"
+                    allowFullScreen
+                    referrerPolicy="no-referrer"
+                    title={`WebView para ${title}`}
+                    sandbox="allow-forms allow-scripts allow-same-origin allow-presentation"
+                ></iframe>
+            )}
+
+            {errorMsg && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-white pointer-events-none">
+                    <p>{errorMsg}</p>
+                </div>
+            )}
+        </div>
     </div>
   );
 };
