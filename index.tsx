@@ -20,25 +20,34 @@ const XMLTV_URL = 'https://raw.githubusercontent.com/matthuisman/i.mjh.nz/master
 const Player = ({url, title, onPlayerError, logDebug}) => {
   const videoRef = useRef(null);
   const hlsInstanceRef = useRef(null);
-  const [isError, setIsError] = useState(false);
+  const [playerMode, setPlayerMode] = useState('native'); // 'native' or 'iframe'
+
+  // Effect to reset player mode when the video source URL changes.
+  useEffect(() => {
+    setPlayerMode('native');
+  }, [url]);
 
   const handleError = () => {
-    setIsError(true);
-    if (onPlayerError) {
-        onPlayerError();
+    if (playerMode === 'native') {
+        logDebug('Native player failed. Trying iframe fallback silently.');
+        setPlayerMode('iframe');
+        if (onPlayerError) {
+            onPlayerError();
+        }
     }
   };
 
+  // Effect to setup the native video player.
   useEffect(() => {
-    setIsError(false);
-    
     if (hlsInstanceRef.current) {
         hlsInstanceRef.current.destroy();
         hlsInstanceRef.current = null;
     }
 
     const video = videoRef.current;
-    if (!video || !url) return;
+    if (!video || !url || playerMode !== 'native') {
+        return; // Only setup if we have a video element, a url, and are in native mode.
+    }
     
     logDebug(`Playing: ${url.substring(0, 100)}...`);
 
@@ -77,23 +86,30 @@ const Player = ({url, title, onPlayerError, logDebug}) => {
         hlsInstanceRef.current.destroy();
       }
     };
-  }, [url]);
+  }, [url, playerMode]);
 
   return (
      <div className="w-full h-full flex flex-col bg-black">
-      <div className="flex justify-between items-center mb-2 flex-shrink-0">
-        <h2 className="text-white text-xl truncate" title={title}>{title}</h2>
-        <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline text-sm flex-shrink-0 ml-4">Abrir em nova aba</a>
-      </div>
-      {!isError ? (
-        <video ref={videoRef} controls autoPlay onError={handleError} className="w-full h-full bg-black" referrerPolicy="no-referrer" />
-      ) : (
-        <div className="text-red-400 bg-gray-900 w-full h-full flex items-center justify-center flex-col text-center p-4">
-          <p className="font-semibold">Erro ao carregar o vídeo.</p>
-          <p className="text-sm text-gray-300 mt-1">A fonte pode estar offline ou o formato de vídeo pode não ser compatível com seu navegador.</p>
-          <p className="text-sm text-gray-300">Tente abrir o link em uma nova aba.</p>
+        <div className="flex justify-between items-center mb-2 flex-shrink-0">
+            <h2 className="text-white text-xl truncate" title={title}>{title}</h2>
+            <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline text-sm flex-shrink-0 ml-4">Abrir em nova aba</a>
         </div>
-      )}
+        
+        {playerMode === 'native' && (
+            <video ref={videoRef} controls autoPlay onError={handleError} className="w-full h-full bg-black" referrerPolicy="no-referrer" />
+        )}
+
+        {playerMode === 'iframe' && (
+            <iframe
+                src={url}
+                className="w-full h-full border-0"
+                allow="autoplay; encrypted-media; fullscreen"
+                allowFullScreen
+                referrerPolicy="no-referrer"
+                title={`WebView para ${title}`}
+                sandbox="allow-forms allow-scripts allow-same-origin allow-presentation"
+            ></iframe>
+        )}
     </div>
   );
 };
