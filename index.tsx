@@ -1,7 +1,7 @@
 
-import React, { useEffect, useState, useRef } from 'https://esm.sh/react';
-import ReactDOM from 'https://esm.sh/react-dom/client';
-import { Search, Star, StarOff, RefreshCw, Video, Tv, Clapperboard, Menu, ChevronsLeft, ChevronDown, ChevronUp, Cog } from 'https://esm.sh/lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import ReactDOM from 'react-dom/client';
+import { Search, Star, StarOff, RefreshCw, Video, Tv, Clapperboard, Menu, ChevronsLeft, ChevronDown, ChevronUp, Cog } from 'lucide-react';
 
 // Fix: Declare Hls as a global variable to resolve TypeScript errors.
 // This is necessary because hls.js is expected to be loaded via a script tag.
@@ -22,14 +22,22 @@ const Player = ({url, title, onPlayerError, logDebug}) => {
   const hlsInstanceRef = useRef(null);
   const [playerMode, setPlayerMode] = useState('native'); // 'native' or 'iframe'
 
+  const [usingProxy, setUsingProxy] = useState(false);
+
   // Effect to reset player mode when the video source URL changes.
   useEffect(() => {
     setPlayerMode('native');
+    setUsingProxy(false);
   }, [url]);
 
   const handleError = () => {
     if (playerMode === 'native') {
-        logDebug('Native player failed. Trying iframe fallback silently.');
+        if (!usingProxy) {
+            logDebug('Native player failed. Retrying with CORS proxy...');
+            setUsingProxy(true);
+            return;
+        }
+        logDebug('Proxy attempt failed. Trying iframe fallback silently.');
         setPlayerMode('iframe');
         if (onPlayerError) {
             onPlayerError();
@@ -49,14 +57,21 @@ const Player = ({url, title, onPlayerError, logDebug}) => {
         return; // Only setup if we have a video element, a url, and are in native mode.
     }
     
-    logDebug(`Playing: ${url.substring(0, 100)}...`);
+    let playUrl = url;
+    if (usingProxy) {
+        // Use a CORS proxy. corsproxy.io is a common public one.
+        // We encode the URL to ensure it's passed correctly.
+        playUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
+    }
+
+    logDebug(`Playing: ${playUrl.substring(0, 100)}...`);
 
     if (url.includes('.m3u8')) {
       if (typeof Hls !== 'undefined' && Hls.isSupported()) {
         logDebug("HLS stream detected. Using hls.js.");
         const hls = new Hls();
         hlsInstanceRef.current = hls;
-        hls.loadSource(url);
+        hls.loadSource(playUrl);
         hls.attachMedia(video);
         hls.on(Hls.Events.MANIFEST_PARSED, () => {
           video.play().catch(() => console.warn("Autoplay prevented by browser."));
@@ -69,7 +84,7 @@ const Player = ({url, title, onPlayerError, logDebug}) => {
         });
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
         logDebug("Using native HLS support (e.g., Safari).");
-        video.src = url;
+        video.src = playUrl;
         video.play().catch(() => console.warn("Autoplay prevented by browser."));
       } else {
         logDebug("HLS stream but hls.js is not supported and native playback is not available.");
@@ -77,7 +92,7 @@ const Player = ({url, title, onPlayerError, logDebug}) => {
       }
     } else {
       logDebug("Non-HLS stream. Using native player.");
-      video.src = url;
+      video.src = playUrl;
       video.play().catch(() => console.warn("Autoplay prevented by browser."));
     }
 
@@ -86,7 +101,7 @@ const Player = ({url, title, onPlayerError, logDebug}) => {
         hlsInstanceRef.current.destroy();
       }
     };
-  }, [url, playerMode]);
+  }, [url, playerMode, usingProxy]);
 
   return (
      <div className="w-full h-full flex flex-col bg-black">
