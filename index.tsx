@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState, useRef } from 'https://esm.sh/react';
 import ReactDOM from 'https://esm.sh/react-dom/client';
-import { Search, Star, StarOff, RefreshCw, Video, Tv, Clapperboard, Menu, ChevronsLeft, ChevronDown, ChevronUp, Cog } from 'https://esm.sh/lucide-react';
+import { Search, Star, StarOff, RefreshCw, Video, Tv, Clapperboard, Menu, ChevronsLeft, ChevronDown, ChevronUp, Cog, Download, Trash2 } from 'https://esm.sh/lucide-react';
 
 // Fix: Declare Hls as a global variable to resolve TypeScript errors.
 // This is necessary because hls.js is expected to be loaded via a script tag.
@@ -17,10 +17,11 @@ const DEFAULT_XML_LISTS = [
 
 const XMLTV_URL = 'https://raw.githubusercontent.com/matthuisman/i.mjh.nz/master/PlutoTV/br.xml';
 
-const Player = ({url, title, onPlayerError, logDebug}) => {
+const Player = ({url, title, onPlayerError, logDebug, onDownload}) => {
   const videoRef = useRef(null);
   const hlsInstanceRef = useRef(null);
   const [playerMode, setPlayerMode] = useState('native'); // 'native' or 'iframe'
+  const [isDownloading, setIsDownloading] = useState(false);
 
   // Effect to reset player mode when the video source URL changes.
   useEffect(() => {
@@ -78,6 +79,7 @@ const Player = ({url, title, onPlayerError, logDebug}) => {
     } else {
       logDebug("Non-HLS stream. Using native player.");
       video.src = url;
+      video.crossOrigin = "anonymous"; // Add CORS support
       video.play().catch(() => console.warn("Autoplay prevented by browser."));
     }
 
@@ -88,15 +90,61 @@ const Player = ({url, title, onPlayerError, logDebug}) => {
     };
   }, [url, playerMode]);
 
+  const handleDownload = async () => {
+    if (url.includes('.m3u8')) {
+      alert('Downloads de streams HLS não são suportados. Apenas vídeos MP4 diretos podem ser baixados.');
+      return;
+    }
+
+    setIsDownloading(true);
+    logDebug(`Iniciando download: ${title}`);
+    
+    try {
+      const response = await fetch(url, { mode: 'cors' });
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = `${title}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+      
+      if (onDownload) {
+        onDownload({ title, url, downloadedAt: new Date().toISOString() });
+      }
+      
+      logDebug(`Download concluído: ${title}`);
+    } catch (error) {
+      logDebug(`Erro no download: ${error.message}`);
+      alert('Erro ao baixar o vídeo. Tente abrir em nova aba e baixar manualmente.');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
   return (
      <div className="w-full h-full flex flex-col bg-black">
         <div className="flex justify-between items-center mb-2 flex-shrink-0">
             <h2 className="text-white text-xl truncate" title={title}>{title}</h2>
-            <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline text-sm flex-shrink-0 ml-4">Abrir em nova aba</a>
+            <div className="flex gap-2 items-center flex-shrink-0 ml-4">
+                <button 
+                    onClick={handleDownload} 
+                    disabled={isDownloading}
+                    className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white px-3 py-1 rounded flex items-center gap-1 text-sm"
+                    title="Baixar para assistir offline"
+                >
+                    <Download size={16} />
+                    {isDownloading ? 'Baixando...' : 'Download'}
+                </button>
+                <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline text-sm">Abrir em nova aba</a>
+            </div>
         </div>
         
         {playerMode === 'native' && (
-            <video ref={videoRef} controls autoPlay onError={handleError} className="w-full h-full bg-black" referrerPolicy="no-referrer" />
+            <video ref={videoRef} controls autoPlay onError={handleError} className="w-full h-full bg-black" referrerPolicy="no-referrer" crossOrigin="anonymous" />
         )}
 
         {playerMode === 'iframe' && (
@@ -301,6 +349,7 @@ function App() {
   const [currentUrl, setCurrentUrl] = useState(null);
   const [currentTitle, setCurrentTitle] = useState('');
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
+  const [downloads, setDownloads] = useState([]);
   
   // Settings State
   const [isFloating, setIsFloating] = useState(false);
@@ -336,11 +385,13 @@ function App() {
       const savedOpacity = localStorage.getItem('opacity');
       const savedCustomLists = localStorage.getItem('customLists');
       const savedUseDefault = localStorage.getItem('useDefaultLists');
+      const savedDownloads = localStorage.getItem('downloads');
       if (savedFavorites) setFavorites(JSON.parse(savedFavorites));
       if (savedFloating) setIsFloating(JSON.parse(savedFloating));
       if (savedOpacity) setOpacity(JSON.parse(savedOpacity));
       if (savedCustomLists) setCustomLists(savedCustomLists);
       if (savedUseDefault) setUseDefaultLists(JSON.parse(savedUseDefault));
+      if (savedDownloads) setDownloads(JSON.parse(savedDownloads));
     } catch (e) {
       logDebug(`Error loading from localStorage: ${e.message}`);
     }
@@ -353,10 +404,11 @@ function App() {
       localStorage.setItem('opacity', JSON.stringify(opacity));
       localStorage.setItem('customLists', customLists);
       localStorage.setItem('useDefaultLists', JSON.stringify(useDefaultLists));
+      localStorage.setItem('downloads', JSON.stringify(downloads));
     } catch (e) {
       logDebug(`Error saving to localStorage: ${e.message}`);
     }
-  }, [favorites, isFloating, opacity, customLists, useDefaultLists]);
+  }, [favorites, isFloating, opacity, customLists, useDefaultLists, downloads]);
 
   const fetchLists = () => {
     setChannels([]);
@@ -546,6 +598,20 @@ function App() {
     setCurrentTitle(name);
   };
   
+  const handleDownload = (downloadInfo) => {
+    const newDownload = {
+      id: Date.now(),
+      ...downloadInfo
+    };
+    setDownloads(prev => [newDownload, ...prev]);
+    logDebug(`Download salvo: ${downloadInfo.title}`);
+  };
+
+  const removeDownload = (id) => {
+    setDownloads(prev => prev.filter(d => d.id !== id));
+    logDebug('Download removido da lista');
+  };
+  
   const handleBackFromSeries = () => {
     setSelectedSeries(null);
     setCurrentUrl(null);
@@ -591,6 +657,8 @@ function App() {
             setCustomLists={setCustomLists}
             useDefaultLists={useDefaultLists}
             setUseDefaultLists={setUseDefaultLists}
+            downloads={downloads}
+            removeDownload={removeDownload}
         />
       </div>
 
@@ -603,6 +671,7 @@ function App() {
             openPlayer={openPlayer}
             handleVideoError={handleVideoError}
             logDebug={logDebug}
+            onDownload={handleDownload}
         />
       </div>
     </div>
