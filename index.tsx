@@ -21,13 +21,14 @@ const Player = ({url, title, onPlayerError, logDebug}) => {
   const videoRef = useRef(null);
   const hlsInstanceRef = useRef(null);
   const [playerMode, setPlayerMode] = useState('native'); // 'native' or 'iframe'
-
   const [usingProxy, setUsingProxy] = useState(false);
+  const [hasStarted, setHasStarted] = useState(false);
 
   // Effect to reset player mode when the video source URL changes.
   useEffect(() => {
     setPlayerMode('native');
     setUsingProxy(false);
+    setHasStarted(false);
   }, [url]);
 
   const handleError = () => {
@@ -44,6 +45,18 @@ const Player = ({url, title, onPlayerError, logDebug}) => {
         }
     }
   };
+
+  // Timeout effect to fallback if playback doesn't start
+  useEffect(() => {
+    if (playerMode !== 'native' || hasStarted) return;
+
+    const timeout = setTimeout(() => {
+        logDebug('Playback timeout (15s). Triggering fallback.');
+        handleError();
+    }, 15000);
+
+    return () => clearTimeout(timeout);
+  }, [playerMode, hasStarted, usingProxy, url]);
 
   // Effect to setup the native video player.
   useEffect(() => {
@@ -107,11 +120,22 @@ const Player = ({url, title, onPlayerError, logDebug}) => {
      <div className="w-full h-full flex flex-col bg-black">
         <div className="flex justify-between items-center mb-2 flex-shrink-0">
             <h2 className="text-white text-xl truncate" title={title}>{title}</h2>
-            <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline text-sm flex-shrink-0 ml-4">Abrir em nova aba</a>
+            <div className="flex items-center gap-4 flex-shrink-0 ml-4">
+                 <button onClick={() => setPlayerMode('iframe')} className="text-gray-400 hover:text-white text-sm">Modo Web</button>
+                 <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline text-sm">Abrir em nova aba</a>
+            </div>
         </div>
         
         {playerMode === 'native' && (
-            <video ref={videoRef} controls autoPlay onError={handleError} className="w-full h-full bg-black" referrerPolicy="no-referrer" />
+            <video
+                ref={videoRef}
+                controls
+                autoPlay
+                onError={handleError}
+                onPlaying={() => setHasStarted(true)}
+                className="w-full h-full bg-black"
+                referrerPolicy="no-referrer"
+            />
         )}
 
         {playerMode === 'iframe' && (
@@ -122,7 +146,7 @@ const Player = ({url, title, onPlayerError, logDebug}) => {
                 allowFullScreen
                 referrerPolicy="no-referrer"
                 title={`WebView para ${title}`}
-                sandbox="allow-forms allow-scripts allow-same-origin allow-presentation"
+                sandbox="allow-forms allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox"
             ></iframe>
         )}
     </div>
