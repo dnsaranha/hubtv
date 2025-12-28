@@ -21,13 +21,14 @@ const Player = ({url, title, onPlayerError, logDebug}) => {
   const videoRef = useRef(null);
   const hlsInstanceRef = useRef(null);
   const [playerMode, setPlayerMode] = useState('native'); // 'native' or 'iframe'
-
   const [usingProxy, setUsingProxy] = useState(false);
+  const [hasStarted, setHasStarted] = useState(false);
 
   // Effect to reset player mode when the video source URL changes.
   useEffect(() => {
     setPlayerMode('native');
     setUsingProxy(false);
+    setHasStarted(false);
   }, [url]);
 
   const handleError = () => {
@@ -44,6 +45,18 @@ const Player = ({url, title, onPlayerError, logDebug}) => {
         }
     }
   };
+
+  // Timeout effect to fallback if playback doesn't start
+  useEffect(() => {
+    if (playerMode !== 'native' || hasStarted) return;
+
+    const timeout = setTimeout(() => {
+        logDebug('Playback timeout (15s). Triggering fallback.');
+        handleError();
+    }, 15000);
+
+    return () => clearTimeout(timeout);
+  }, [playerMode, hasStarted, usingProxy, url]);
 
   // Effect to setup the native video player.
   useEffect(() => {
@@ -103,27 +116,55 @@ const Player = ({url, title, onPlayerError, logDebug}) => {
     };
   }, [url, playerMode, usingProxy]);
 
+  const openPopup = () => {
+      const width = 800;
+      const height = 600;
+      const left = (window.screen.width - width) / 2;
+      const top = (window.screen.height - height) / 2;
+      window.open(url, 'livehub_player_popup', `width=${width},height=${height},top=${top},left=${left},resizable=yes,scrollbars=yes,status=no,menubar=no,toolbar=no,location=no`);
+  };
+
   return (
      <div className="w-full h-full flex flex-col bg-black">
         <div className="flex justify-between items-center mb-2 flex-shrink-0">
             <h2 className="text-white text-xl truncate" title={title}>{title}</h2>
-            <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline text-sm flex-shrink-0 ml-4">Abrir em nova aba</a>
+            <div className="flex items-center gap-4 flex-shrink-0 ml-4">
+                 <button onClick={() => setPlayerMode('iframe')} className="text-gray-400 hover:text-white text-sm">Modo Web</button>
+                 <button onClick={openPopup} className="text-gray-400 hover:text-white text-sm">Abrir Popup</button>
+                 <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline text-sm">Nova Aba</a>
+            </div>
         </div>
         
         {playerMode === 'native' && (
-            <video ref={videoRef} controls autoPlay onError={handleError} className="w-full h-full bg-black" referrerPolicy="no-referrer" />
+            <div className="relative w-full h-full">
+                <video
+                    ref={videoRef}
+                    controls
+                    autoPlay
+                    onError={handleError}
+                    onPlaying={() => setHasStarted(true)}
+                    className="w-full h-full bg-black"
+                    referrerPolicy="no-referrer"
+                />
+            </div>
         )}
 
         {playerMode === 'iframe' && (
-            <iframe
-                src={url}
-                className="w-full h-full border-0"
-                allow="autoplay; encrypted-media; fullscreen"
-                allowFullScreen
-                referrerPolicy="no-referrer"
-                title={`WebView para ${title}`}
-                sandbox="allow-forms allow-scripts allow-same-origin allow-presentation"
-            ></iframe>
+             <div className="relative w-full h-full flex flex-col items-center justify-center bg-gray-900">
+                <p className="text-gray-400 mb-4 text-center px-4">
+                    Se o vídeo não carregar abaixo, pode ser devido a restrições de segurança (Mixed Content).<br/>
+                    Tente usar o botão "Abrir Popup" acima.
+                </p>
+                <iframe
+                    src={url}
+                    className="w-full flex-1 border-0"
+                    allow="autoplay; encrypted-media; fullscreen"
+                    allowFullScreen
+                    referrerPolicy="no-referrer"
+                    title={`WebView para ${title}`}
+                    sandbox="allow-forms allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox"
+                ></iframe>
+            </div>
         )}
     </div>
   );
