@@ -1,0 +1,10 @@
+{
+  "id": "com.example.tvonline",
+  "version": "1.0.0",
+  "vendor": "My Company",
+  "type": "web",
+  "main": "index.html",
+  "title": "LiveHubTV",
+  "icon": "public/pwa-192x192.png",
+  "largeIcon": "public/pwa-512x512.png"
+}
